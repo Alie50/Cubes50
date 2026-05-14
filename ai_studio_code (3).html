@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>لعبة النقاط والمربعات - النسخة المصلحة</title>
+    <style>
+        :root { --bg-body: #ffffff; --bg-card: #f8f9fa; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background-color: var(--bg-body);
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column; align-items: center;
+            overflow-x: hidden;
+        }
+
+        /* شاشة الإعداد */
+        #setup-screen {
+            position: fixed; inset: 0; background: white; z-index: 1000;
+            display: flex; flex-direction: column; align-items: center;
+            padding: 20px; overflow-y: auto;
+        }
+
+        h1.setup-title { font-size: 32px; color: #333; margin: 20px 0; font-weight: bold; }
+
+        .player-section {
+            background-color: var(--bg-card);
+            width: 100%; max-width: 400px;
+            border-radius: 20px; padding: 20px; margin-bottom: 20px;
+            box-sizing: border-box; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .player-label { font-size: 20px; font-weight: bold; color: #000; display: block; margin-bottom: 15px; }
+
+        input[type="text"] {
+            width: 100%; padding: 15px; border-radius: 12px; border: 1px solid #ddd;
+            font-size: 18px; outline: none; text-align: right; box-sizing: border-box;
+        }
+
+        .color-selector { display: flex; align-items: center; justify-content: flex-end; margin-top: 15px; gap: 10px; }
+        .color-selector input[type="color"] { width: 60px; height: 35px; border: 1px solid #ccc; cursor: pointer; }
+
+        #start-btn {
+            width: 100%; max-width: 400px; padding: 18px;
+            background-color: #2ecc71; color: white; border: none;
+            border-radius: 15px; font-size: 22px; font-weight: bold;
+            margin: 20px 0 40px 0; cursor: pointer;
+        }
+
+        /* واجهة اللعبة */
+        .game-header { display: flex; gap: 15px; width: 95%; max-width: 500px; margin: 20px 0; }
+        .score-card {
+            flex: 1; background: white; padding: 15px; border-radius: 15px;
+            text-align: center; border: 6px solid #eee; transition: border 0.3s;
+        }
+        .score-char { font-size: 24px; font-weight: bold; margin-bottom: 5px; display: block; }
+        .score-num { font-size: 40px; font-weight: 900; }
+
+        #board { position: relative; background: white; margin-bottom: 50px; }
+        .dot { position: absolute; width: 12px; height: 12px; background: #34495e; border-radius: 50%; z-index: 10; transform: translate(-50%, -50%); }
+        .line { position: absolute; background: #f0f0f0; z-index: 5; border-radius: 5px; }
+        
+        .square-fill {
+            position: absolute; display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-size: 28px; color: white; z-index: 1;
+            animation: pop 0.3s ease-out;
+        }
+        @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+        .touch-area { position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%); z-index: 11; }
+    </style>
+</head>
+<body>
+
+    <div id="setup-screen">
+        <h1 class="setup-title">إعداد اللعبة</h1>
+        <div class="player-section">
+            <label class="player-label">اللاعب الأول</label>
+            <input type="text" id="p1-name" placeholder="مثلاً: أحمد">
+            <div class="color-selector">
+                <label>اللون:</label>
+                <input type="color" id="p1-color" value="#3498db">
+            </div>
+        </div>
+        <div class="player-section">
+            <label class="player-label">اللاعب الثاني</label>
+            <input type="text" id="p2-name" placeholder="مثلاً: سارة">
+            <div class="color-selector">
+                <label>اللون:</label>
+                <input type="color" id="p2-color" value="#e74c3c">
+            </div>
+        </div>
+        <button id="start-btn" onclick="beginGame()">ابدأ اللعبة الآن</button>
+    </div>
+
+    <div class="game-header">
+        <div id="card-p1" class="score-card">
+            <span id="char-p1" class="score-char">-</span>
+            <span id="score-p1" class="score-num">0</span>
+        </div>
+        <div id="card-p2" class="score-card">
+            <span id="char-p2" class="score-char">-</span>
+            <span id="score-p2" class="score-num">0</span>
+        </div>
+    </div>
+
+    <div id="board"></div>
+
+    <script>
+        const GRID = 8;
+        let SPACING = 0;
+        let currentPlayer = 'p1';
+        let players = { p1: {}, p2: {} };
+        let drawnLines = new Set();
+        let startDot = null;
+        let movedThisTouch = false;
+
+        function beginGame() {
+            const n1 = document.getElementById('p1-name').value.trim();
+            const n2 = document.getElementById('p2-name').value.trim();
+            if (!n1 || !n2) { alert("أدخل الأسماء"); return; }
+
+            players.p1 = { name: n1, color: document.getElementById('p1-color').value, score: 0, char: n1[0].toUpperCase() };
+            players.p2 = { name: n2, color: document.getElementById('p2-color').value, score: 0, char: n2[0].toUpperCase() };
+            
+            document.getElementById('char-p1').innerText = players.p1.char;
+            document.getElementById('char-p2').innerText = players.p2.char;
+            document.getElementById('setup-screen').style.display = 'none';
+
+            SPACING = Math.min(window.innerWidth - 40, 500) / (GRID - 1);
+            initBoard();
+        }
+
+        function initBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+            board.style.width = board.style.height = (GRID - 1) * SPACING + 'px';
+
+            for (let r = 0; r < GRID; r++) {
+                for (let c = 0; c < GRID; c++) {
+                    const x = c * SPACING, y = r * SPACING;
+                    const dot = document.createElement('div');
+                    dot.className = 'dot';
+                    dot.style.left = x + 'px'; dot.style.top = y + 'px';
+                    board.appendChild(dot);
+
+                    const area = document.createElement('div');
+                    area.className = 'touch-area';
+                    area.style.left = x + 'px'; area.style.top = y + 'px';
+                    area.dataset.r = r; area.dataset.c = c;
+                    area.addEventListener('touchstart', (e) => { startDot = { r: parseInt(r), c: parseInt(c) }; movedThisTouch = false; });
+                    area.addEventListener('touchmove', handleMove);
+                    board.appendChild(area);
+                }
+            }
+            updateUI();
+        }
+
+        function handleMove(e) {
+            if (!startDot || movedThisTouch) return;
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+
+            if (target && target.classList.contains('touch-area')) {
+                const tr = parseInt(target.dataset.r), tc = parseInt(target.dataset.c);
+                const dr = Math.abs(startDot.r - tr), dc = Math.abs(startDot.c - tc);
+
+                if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+                    let id, type, r, c;
+                    if (dr === 0) { // أفقي
+                        type = 'h'; r = startDot.r; c = Math.min(startDot.c, tc);
+                    } else { // عمودي
+                        type = 'v'; r = Math.min(startDot.r, tr); c = startDot.c;
+                    }
+                    id = `${type}-${r}-${c}`;
+
+                    if (!drawnLines.has(id)) {
+                        drawLine(id, type, r, c);
+                        movedThisTouch = true;
+                    }
+                }
+            }
+        }
+
+        function drawLine(id, type, r, c) {
+            drawnLines.add(id);
+            const line = document.createElement('div');
+            line.className = 'line';
+            const thick = 8;
+            
+            if (type === 'h') {
+                line.style.width = SPACING + 'px'; line.style.height = thick + 'px';
+                line.style.left = (c * SPACING) + 'px'; line.style.top = (r * SPACING - thick/2) + 'px';
+            } else {
+                line.style.width = thick + 'px'; line.style.height = SPACING + 'px';
+                line.style.left = (c * SPACING - thick/2) + 'px'; line.style.top = (r * SPACING) + 'px';
+            }
+
+            line.style.background = players[currentPlayer].color;
+            document.getElementById('board').appendChild(line);
+
+            if (!checkSquare(type, r, c)) {
+                currentPlayer = (currentPlayer === 'p1') ? 'p2' : 'p1';
+            }
+            updateUI();
+        }
+
+        function checkSquare(type, r, c) {
+            let made = false;
+            if (type === 'h') {
+                if (isFull(r - 1, c)) made = true; // فحص المربع العلوي
+                if (isFull(r, c)) made = true;     // فحص المربع السفلي
+            } else {
+                if (isFull(r, c - 1)) made = true; // فحص المربع الأيسر
+                if (isFull(r, c)) made = true;     // فحص المربع الأيمن
+            }
+            return made;
+        }
+
+        function isFull(r, c) {
+            if (r < 0 || r >= GRID - 1 || c < 0 || c >= GRID - 1) return false;
+            const top = `h-${r}-${c}`, bottom = `h-${r+1}-${c}`, left = `v-${r}-${c}`, right = `v-${r}-${c+1}`;
+            
+            if (drawnLines.has(top) && drawnLines.has(bottom) && drawnLines.has(left) && drawnLines.has(right)) {
+                if (!document.getElementById(`sq-${r}-${c}`)) {
+                    fillBox(r, c);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function fillBox(r, c) {
+            const sq = document.createElement('div');
+            sq.id = `sq-${r}-${c}`;
+            sq.className = 'square-fill';
+            sq.style.width = sq.style.height = SPACING + 'px';
+            sq.style.left = (c * SPACING) + 'px'; sq.style.top = (r * SPACING) + 'px';
+            sq.style.background = players[currentPlayer].color + 'cc';
+            sq.innerText = players[currentPlayer].char;
+            document.getElementById('board').appendChild(sq);
+            players[currentPlayer].score++;
+        }
+
+        function updateUI() {
+            document.getElementById('score-p1').innerText = players.p1.score;
+            document.getElementById('score-p2').innerText = players.p2.score;
+            document.getElementById('card-p1').style.borderColor = (currentPlayer === 'p1') ? players.p1.color : '#eee';
+            document.getElementById('card-p2').style.borderColor = (currentPlayer === 'p2') ? players.p2.color : '#eee';
+        }
+
+        window.addEventListener('touchend', () => startDot = null);
+    </script>
+</body>
+</html>
